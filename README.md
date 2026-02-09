@@ -6,8 +6,8 @@ It is made with [WGPU](https://wgpu.rs/) for rendering and [Rodio](https://docs.
 Credits to [Quasar098](https://github.com/quasar098/) for the original [Midi Playground](https://github.com/quasar098/midi-playground)
 
 # Usage
-Run it from the command line:  midi-bounce.exe converted_midi_file.bin audio_file.ogg  
-To convert a midi file, use midiconverter.py, it will open a file dialog to open the midi file and save the bin file.
+Run it from the command line:  `midi-bounce.exe converted_midi_file.bin audio_file.ogg`  
+To convert a midi file, use `midiconverter.py`, it will open a file dialog to open the midi file and save the bin file.
 - R: reset
 - G: re-generate
 

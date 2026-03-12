@@ -264,7 +264,8 @@ impl State {
 		let square_buffer = square_mesh.create_buffers(&device);
 
 		// audio
-		let audio_stream = OutputStreamBuilder::open_default_stream().expect("Failed to get audio handle, make sure you have headphones or speakers");
+		let mut audio_stream = OutputStreamBuilder::open_default_stream().expect("Failed to get audio handle, make sure you have headphones or speakers");
+		audio_stream.log_on_drop(false);
 
 		// finally create the thing
 		Self {

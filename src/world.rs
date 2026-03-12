@@ -3,7 +3,7 @@ use std::{collections::HashSet, fs::File, io::Read};
 use glam::{Vec2, vec2};
 use rand::Rng;
 
-use crate::state::Mesh;
+use crate::{midi_parse::parse_midi, state::Mesh};
 
 #[derive(Debug)]
 struct Rect {
@@ -179,7 +179,14 @@ impl World {
 		let mut file = File::open(file_path).unwrap();
 		let mut buffer = Vec::new();
 		file.read_to_end(&mut buffer).unwrap();
-		let times: &[f32] = bytemuck::cast_slice(&buffer);
+		let times: &[f32] =
+		if file_path.ends_with(".mid") || file_path.ends_with(".midi") {
+			&parse_midi(&buffer)
+		} else if file_path.ends_with(".bin") {
+			bytemuck::cast_slice(&buffer)
+		} else {
+			panic!("Unsupported file type")
+		};
 		Self::generate_from_times(times)
 	}
 

@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 bytemuck = "1.25.0"
 glam = "0.31.0"
-# midly = "0.5.3"
+midly = "0.5.3"
 pollster = "0.4.0"
 rand = "0.9.2"
 rodio = "0.21.1"

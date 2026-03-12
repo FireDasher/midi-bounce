@@ -3,7 +3,7 @@ import struct
 from tkinter import filedialog
 
 def midi_to_bin(input_file_path: str, output_file_path: str):
-	mid = mido.MidiFile(input_file_path)
+	mid = mido.MidiFile(input_file_path, clip=True)
 	times = []
 	current_time = 0.0
 	last_time = -676767.67

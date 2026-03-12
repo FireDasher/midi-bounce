@@ -9,6 +9,7 @@ use winit::window::{Window, WindowId};
 
 mod state;
 mod world;
+mod midi_parse;
 use state::State;
 
 struct App {

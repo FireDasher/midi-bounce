@@ -27,5 +27,5 @@ jobs:
       with:
         name: midi-bounce-${{ matrix.os }}
         path: |
-          midi-bounce.exe
-          midi-bounce
+          target/release/midi-bounce.exe
+          target/release/midi-bounce

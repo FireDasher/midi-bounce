@@ -1,7 +1,6 @@
 use std::{collections::HashSet, fs::File, io::Read};
 
 use glam::{Vec2, vec2};
-use rand::Rng;
 
 use crate::{midi_parse::parse_midi, state::Mesh};
 
@@ -13,7 +12,7 @@ impl Rect {
 	fn union(&self, other: &Self) -> Self {
 		Self { min: self.min.min(other.min), max: self.max.max(other.max) }
 	}
-	
+
 	// fn intersects(&self, other: &Self) -> bool {
 	// 	self.min.x < other.max.x && self.max.x > other.min.x && self.min.y < other.max.y && self.max.y > other.min.y
 	// }
@@ -35,6 +34,8 @@ struct Bounce {
 	dir: Vec2,
 	time: f32,
 	vertical: bool,
+
+	state: u64,
 }
 
 impl Bounce {
@@ -59,7 +60,7 @@ impl Bounce {
 }
 impl Default for Bounce {
 	fn default() -> Self {
-		Self { pos: Vec2::ZERO, dir: Vec2::ONE, time: 0.0, vertical: false }
+		Self { pos: Vec2::ZERO, dir: Vec2::ONE, time: 0.0, vertical: false, state: 0 }
 	}
 }
 
@@ -94,7 +95,7 @@ pub struct World {
 
 impl World {
 	pub fn generate_from_times(times: &[f32]) -> Self {
-		let mut rng = rand::rng();
+		let mut rng = fastrand::Rng::new();
 
 		let mut bounces: Vec<Bounce> = Vec::new();
 
@@ -124,6 +125,8 @@ impl World {
 				square.time = last.time;
 				vertical = !last.vertical; // Flip the direction to try new path
 
+				rng.seed(last.state); // restores rng state to ensure consistency
+
 				// I added this
 				if !vertical {square.dir.x = -square.dir.x}
 				else {square.dir.y = -square.dir.y}
@@ -135,8 +138,8 @@ impl World {
 
 			let time = times[square.next_note];
 
-			if !backtraced_indexes.contains(&bounces.len()) && rng.random::<f32>() < change_dir_chance { vertical = !vertical }
-			
+			if !backtraced_indexes.contains(&bounces.len()) && rng.f32_inclusive() < change_dir_chance { vertical = !vertical }
+
 			let velocity = square.dir * square_speed * (time - square.time);
 			// ensure the square will not pass through a bounce
 			for bounce in &bounces {
@@ -151,7 +154,7 @@ impl World {
 			if vertical {square.dir.x = -square.dir.x}
 			else {square.dir.y = -square.dir.y}
 
-			let bounce = Bounce { pos: square.pos, dir: square.dir, time: time, vertical };
+			let bounce = Bounce { pos: square.pos, dir: square.dir, time: time, vertical, state: rng.get_seed() };
 			// ensure the square hasn't passed through the bounce
 			for bounce_index in 0..bounces.len() {
 				let first = if bounce_index == 0 {&Bounce::default()} else {&bounces[bounce_index - 1]};

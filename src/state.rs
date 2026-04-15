@@ -1,7 +1,6 @@
 use std::{fs::File, sync::Arc, time::Instant};
 
 use bytemuck::{Pod, Zeroable};
-use rodio::{OutputStream, OutputStreamBuilder, Sink};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -15,7 +14,7 @@ impl Mesh {
 	pub fn new() -> Self {
 		Self { vertices: Vec::new(), indicies: Vec::new() }
 	}
-	
+
 	pub fn add_vertex(&mut self, x: f32, y: f32, shade: f32) {
 		self.vertices.push(Vertex { x, y, shade });
 	}
@@ -99,8 +98,8 @@ pub struct State {
 	world: World,
 	last_time: Instant,
 
-	_audio_stream: OutputStream,
-	sink: Sink, // sink is needed to stop audio
+	_audio_stream: rodio::MixerDeviceSink,
+	sink: rodio::Player, // sink is needed to stop audio
 
 	midi_path: String, audio_path: String
 }
@@ -117,10 +116,13 @@ impl State {
 
 		// Creating the surface
 		let size = window.inner_size();
-		
-		let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+
+		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { // why doesn't this implement Default anymore
 			backends: wgpu::Backends::PRIMARY,
-			..Default::default()
+			flags: Default::default(),
+			memory_budget_thresholds: Default::default(),
+			backend_options: Default::default(),
+			display: None,
 		});
 		let surface = instance.create_surface(window.clone()).unwrap();
 		let adapter = instance.request_adapter(&wgpu::RequestAdapterOptionsBase {
@@ -150,7 +152,7 @@ impl State {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
-		
+
 		// bind group crap
 		let uniforms_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: None,
@@ -208,7 +210,11 @@ impl State {
 		let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 		let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: None,
-			layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&uniforms_bind_group_layout], push_constant_ranges: &[] })),
+			layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+				label: None,
+				bind_group_layouts: &[Some(&uniforms_bind_group_layout)],
+				immediate_size: 0,
+			})),
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: None,
@@ -236,7 +242,7 @@ impl State {
 			},
 			depth_stencil: None,
 			multisample: wgpu::MultisampleState::default(),
-			multiview: None,
+			multiview_mask: None,
 			cache: None
 		});
 
@@ -264,7 +270,7 @@ impl State {
 		let square_buffer = square_mesh.create_buffers(&device);
 
 		// audio
-		let mut audio_stream = OutputStreamBuilder::open_default_stream().expect("Failed to get audio handle, make sure you have headphones or speakers");
+		let mut audio_stream = rodio::DeviceSinkBuilder::open_default_sink().expect("Failed to get audio handle, make sure you have headphones or speakers");
 		audio_stream.log_on_drop(false);
 
 		// finally create the thing
@@ -272,7 +278,7 @@ impl State {
 			window, surface, device, queue, config, is_surface_configured: false, render_pipeline,
 			map_buffer, square_buffer, map_uniforms, square_uniforms,
 			world, last_time: Instant::now(),
-			sink: Sink::connect_new(&audio_stream.mixer()), _audio_stream: audio_stream,
+			sink: rodio::Player::connect_new(&audio_stream.mixer()), _audio_stream: audio_stream,
 			midi_path, audio_path
 		}
 	}
@@ -322,7 +328,7 @@ impl State {
 			};
 
 			self.queue.write_buffer(&self.map_uniforms.buffer, 0, bytemuck::cast_slice(&[map_uniform]));
-		
+
 		const COLORS: [[f32; 4]; 4] = [[1.0, 0.0, 0.0, 1.0], [1.0, 1.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]]; // I hate padding (pretend the padding is alpha)
 		let square_uniform = Uniforms {
 				matrix: [
@@ -338,8 +344,15 @@ impl State {
 
 		//////////////////////// Render //////////////////////////////////
 		if !self.is_surface_configured {return}
-		
-		let output = self.surface.get_current_texture().unwrap();
+
+		// they made this way more complicated than it used to be
+		let output = match self.surface.get_current_texture() {
+			wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+			wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => { self.surface.configure(&self.device, &self.config); surface_texture },
+			wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Validation | wgpu::CurrentSurfaceTexture::Lost => { return },
+			wgpu::CurrentSurfaceTexture::Outdated => { self.surface.configure(&self.device, &self.config); return },
+		};
+
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -360,13 +373,13 @@ impl State {
 				..Default::default()
 			});
 			render_pass.set_pipeline(&self.render_pipeline);
-			
+
 			render_pass.set_bind_group(0, &self.map_uniforms.bg, &[]);
-			
+
 			render_pass.set_vertex_buffer(0, self.map_buffer.vertex.slice(..));
 			render_pass.set_index_buffer(self.map_buffer.index.slice(..), wgpu::IndexFormat::Uint16);
 			render_pass.draw_indexed(0..self.map_buffer.len, 0, 0..1);
-			
+
 			render_pass.set_bind_group(0, &self.square_uniforms.bg, &[]);
 
 			render_pass.set_vertex_buffer(0, self.square_buffer.vertex.slice(..));

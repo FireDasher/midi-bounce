@@ -58,7 +58,7 @@ fn main() {
 		audio_path = arguments[2].clone();
 	} else {
 		midi_path = rfd::FileDialog::new().set_title("Choose midi file").add_filter("Midi Files", &["mid", "midi"]).pick_file().expect("You didn't choose a MIDI file!!!").to_str().unwrap().to_string();
-		audio_path = rfd::FileDialog::new().set_title("Choose audio file").add_filter("Audio Files", &["ogg", "flac", "wav", "mp3", "mp4"]).pick_file().expect("You didn't choose a MIDI file!!!").to_str().unwrap().to_string();
+		audio_path = rfd::FileDialog::new().set_title("Choose audio file").add_filter("Audio Files", &["ogg", "flac", "wav", "mp3", "mp4"]).pick_file().expect("You didn't choose an Audio file!!!").to_str().unwrap().to_string();
 	}
 
 	let mut app = App{state: None, midi_path, audio_path};

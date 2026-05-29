@@ -13,25 +13,25 @@ mod midi_parse;
 use state::State;
 
 struct App {
-    state: Option<State>,
-}
+	state: Option<State>,
 
-impl App {
-	fn new() -> Self {
-		Self { state: None }
-	}
+	midi_path: String, audio_path: String
 }
 
 impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        self.state = Some(pollster::block_on(
-			State::new(Arc::new(
-				event_loop.create_window(Window::default_attributes().with_title("Midi Bounce")).unwrap()
-			))
-		));
-    }
+	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+		if self.midi_path == "" || self.audio_path == "" {
+			panic!("no midi or audio path chosen"); // should be unreachable
+		} else {
+			self.state = Some(pollster::block_on(
+				State::new(Arc::new(
+					event_loop.create_window(Window::default_attributes().with_title("Midi Bounce")).unwrap()
+				), &self.midi_path, &self.audio_path)
+			));
+		}
+	}
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+	fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
 		if let Some(state) = &mut self.state {
 			match event {
 				WindowEvent::CloseRequested => event_loop.exit(),
@@ -41,13 +41,26 @@ impl ApplicationHandler for App {
 				_ => (),
 			}
 		}
-    }
+	}
 }
 
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
-    event_loop.set_control_flow(ControlFlow::Wait);
-    let mut app = App::new();
-    event_loop.run_app(&mut app).unwrap();
+	let event_loop = EventLoop::new().unwrap();
+	event_loop.set_control_flow(ControlFlow::Poll);
+	event_loop.set_control_flow(ControlFlow::Wait);
+
+	let midi_path;
+	let audio_path;
+
+	let arguments: Vec<String> = std::env::args().collect();
+	if arguments.len() == 3 {
+		midi_path = arguments[1].clone();
+		audio_path = arguments[2].clone();
+	} else {
+		midi_path = rfd::FileDialog::new().set_title("Choose midi file").add_filter("Midi Files", &["mid", "midi"]).pick_file().expect("You didn't choose a MIDI file!!!").to_str().unwrap().to_string();
+		audio_path = rfd::FileDialog::new().set_title("Choose audio file").add_filter("Audio Files", &["ogg", "flac", "wav", "mp3", "mp4"]).pick_file().expect("You didn't choose a MIDI file!!!").to_str().unwrap().to_string();
+	}
+
+	let mut app = App{state: None, midi_path, audio_path};
+	event_loop.run_app(&mut app).unwrap();
 }

@@ -105,15 +105,7 @@ pub struct State {
 }
 
 impl State {
-	pub async fn new(window: Arc<Window>) -> Self {
-		// Command line arguments
-		let arguments: Vec<String> = std::env::args().collect();
-		if arguments.len() != 3 {
-			panic!("\n//// ERROR: You need exactly two arguments, Midi File path and Audio path ////\n");
-		}
-		let midi_path = arguments[1].clone();
-		let audio_path = arguments[2].clone();
-
+	pub async fn new(window: Arc<Window>, midi_path: &str, audio_path: &str) -> Self {
 		// Creating the surface
 		let size = window.inner_size();
 
@@ -248,7 +240,7 @@ impl State {
 
 		// World
 		// let world = World::generate_from_times(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]);
-		let world = World::generate_from_floats_file(&midi_path);
+		let world = World::generate_from_floats_file(midi_path);
 
 		// Creating the buffer
 		let world_mesh = world.create_mesh();
@@ -279,7 +271,7 @@ impl State {
 			map_buffer, square_buffer, map_uniforms, square_uniforms,
 			world, last_time: Instant::now(),
 			sink: rodio::Player::connect_new(&audio_stream.mixer()), _audio_stream: audio_stream,
-			midi_path, audio_path
+			midi_path: midi_path.to_string(), audio_path: audio_path.to_string()
 		}
 	}
 	pub fn resize(&mut self, width: u32, height: u32) {

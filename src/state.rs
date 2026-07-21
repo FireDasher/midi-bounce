@@ -1,4 +1,4 @@
-use std::{fs::File, sync::Arc, time::Instant};
+use std::{fs::File, mem, sync::Arc, time::Instant};
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -66,7 +66,6 @@ struct Uniforms {
 impl Vertex {
 	const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32];
 	fn desc() -> wgpu::VertexBufferLayout<'static> {
-		use std::mem;
 		wgpu::VertexBufferLayout {
 			array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
 			step_mode: wgpu::VertexStepMode::Vertex,
@@ -121,6 +120,7 @@ impl State {
 			power_preference: wgpu::PowerPreference::default(),
 			compatible_surface: Some(&surface),
 			force_fallback_adapter: false,
+			apply_limit_buckets: false,
 		}).await.unwrap();
 
 		let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
@@ -132,11 +132,10 @@ impl State {
 				trace: wgpu::Trace::Off,
 		}).await.unwrap();
 
-		let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter().find(|f| !f.is_srgb() /* srgb makes it look too bright */).copied().unwrap_or(surface_caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
@@ -210,7 +209,7 @@ impl State {
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: None,
-				buffers: &[ Vertex::desc() ],
+				buffers: &[ Some(Vertex::desc()) ],
 				compilation_options: wgpu::PipelineCompilationOptions::default()
 			},
 			fragment: Some(wgpu::FragmentState {
@@ -380,6 +379,6 @@ impl State {
 		}
 
 		self.queue.submit(std::iter::once(encoder.finish()));
-		output.present();
+		self.queue.present(output);
 	}
 }

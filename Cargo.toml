@@ -4,12 +4,12 @@ version = "0.3.0" # I forgot to update it for 0.2.0
 edition = "2024"
 
 [dependencies]
-bytemuck = "1.25.0"
-fastrand = "2.4.1"
-glam = "0.33.0"
+bytemuck = "1.25.2"
+fastrand = "2.5.0"
+glam = "0.33.2"
 midly = "0.5.3"
-pollster = "0.4.0"
+pollster = "1.0.1"
 rfd = "0.17.2"
 rodio = "0.22.2"
-wgpu = "29.0.3"
+wgpu = "30.0.0"
 winit = "0.30.13"

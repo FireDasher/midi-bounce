@@ -4,7 +4,10 @@ use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::world::World;
+use crate::{
+	Args,
+	world::{Square, World},
+};
 
 pub struct Mesh {
 	vertices: Vec<Vertex>,
@@ -12,7 +15,10 @@ pub struct Mesh {
 }
 impl Mesh {
 	pub fn new() -> Self {
-		Self { vertices: Vec::new(), indicies: Vec::new() }
+		Self {
+			vertices: Vec::new(),
+			indicies: Vec::new(),
+		}
 	}
 
 	pub fn add_vertex(&mut self, x: f32, y: f32, shade: f32) {
@@ -39,7 +45,11 @@ impl Mesh {
 			contents: bytemuck::cast_slice(&self.indicies),
 			usage: wgpu::BufferUsages::INDEX,
 		});
-		MeshBuffers { vertex, index, len: self.indicies.len() as u32 }
+		MeshBuffers {
+			vertex,
+			index,
+			len: self.indicies.len() as u32,
+		}
 	}
 }
 
@@ -52,7 +62,8 @@ struct MeshBuffers {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 struct Vertex {
-	x: f32, y: f32,
+	x: f32,
+	y: f32,
 	shade: f32,
 }
 
@@ -76,16 +87,15 @@ impl Vertex {
 
 struct UniformBuffers {
 	buffer: wgpu::Buffer,
-	bg: wgpu::BindGroup
+	bg: wgpu::BindGroup,
 }
 
 pub struct State {
 	window: Arc<Window>,
 	surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    is_surface_configured: bool,
+	device: wgpu::Device,
+	queue: wgpu::Queue,
+	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
 
 	map_buffer: MeshBuffers,
@@ -100,15 +110,16 @@ pub struct State {
 	_audio_stream: rodio::MixerDeviceSink,
 	sink: rodio::Player, // sink is needed to stop audio
 
-	midi_path: String, audio_path: String
+	args: Args,
 }
 
 impl State {
-	pub async fn new(window: Arc<Window>, midi_path: &str, audio_path: &str) -> Self {
+	pub async fn new(window: Arc<Window>, args: Args) -> Self {
 		// Creating the surface
 		let size = window.inner_size();
 
-		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { // why doesn't this implement Default anymore
+		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+			// why doesn't this implement Default anymore
 			backends: wgpu::Backends::PRIMARY,
 			flags: Default::default(),
 			memory_budget_thresholds: Default::default(),
@@ -116,86 +127,88 @@ impl State {
 			display: None,
 		});
 		let surface = instance.create_surface(window.clone()).unwrap();
-		let adapter = instance.request_adapter(&wgpu::RequestAdapterOptionsBase {
-			power_preference: wgpu::PowerPreference::default(),
-			compatible_surface: Some(&surface),
-			force_fallback_adapter: false,
-			apply_limit_buckets: false,
-		}).await.unwrap();
+		let adapter = instance
+			.request_adapter(&wgpu::RequestAdapterOptionsBase {
+				power_preference: wgpu::PowerPreference::default(),
+				compatible_surface: Some(&surface),
+				force_fallback_adapter: false,
+				apply_limit_buckets: false,
+			})
+			.await
+			.unwrap();
 
-		let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
+		let (device, queue) = adapter
+			.request_device(&wgpu::DeviceDescriptor {
 				label: None,
 				required_features: wgpu::Features::empty(),
 				experimental_features: wgpu::ExperimentalFeatures::disabled(),
 				required_limits: wgpu::Limits::default(),
 				memory_hints: Default::default(),
 				trace: wgpu::Trace::Off,
-		}).await.unwrap();
+			})
+			.await
+			.unwrap();
 
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: wgpu::TextureFormat::Bgra8Unorm,
-            color_space: wgpu::SurfaceColorSpace::Auto,
-            width: size.width,
-            height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
+		let config = wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: wgpu::TextureFormat::Bgra8Unorm,
+			color_space: wgpu::SurfaceColorSpace::Auto,
+			width: size.width,
+			height: size.height,
+			present_mode: wgpu::PresentMode::Fifo,
+			alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+			view_formats: vec![],
+			desired_maximum_frame_latency: 2,
+		};
 
 		// bind group crap
 		let uniforms_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: None,
-			entries: &[
-				wgpu::BindGroupLayoutEntry {
-					binding: 0,
-					visibility: wgpu::ShaderStages::VERTEX,
-					ty: wgpu::BindingType::Buffer {
-						ty: wgpu::BufferBindingType::Uniform,
-						has_dynamic_offset: false,
-						min_binding_size: None,
-					},
-					count: None,
-				}
-			],
+			entries: &[wgpu::BindGroupLayoutEntry {
+				binding: 0,
+				visibility: wgpu::ShaderStages::VERTEX,
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Uniform,
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			}],
 		});
-		let uniform_buffer = device.create_buffer_init(
-			&wgpu::util::BufferInitDescriptor {
-				label: None,
-				contents: bytemuck::cast_slice(&[Uniforms::default()]),
-				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-			}
-		);
+		let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: None,
+			contents: bytemuck::cast_slice(&[Uniforms::default()]),
+			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+		});
 		let uniform_buffer_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: None,
 			layout: &uniforms_bind_group_layout,
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: uniform_buffer.as_entire_binding(),
-				}
-			],
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: uniform_buffer.as_entire_binding(),
+			}],
 		});
-		let map_uniforms = UniformBuffers {buffer: uniform_buffer, bg: uniform_buffer_bind_group};
-		let uniform_buffer = device.create_buffer_init(
-			&wgpu::util::BufferInitDescriptor {
-				label: None,
-				contents: bytemuck::cast_slice(&[Uniforms::default()]),
-				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-			}
-		);
+		let map_uniforms = UniformBuffers {
+			buffer: uniform_buffer,
+			bg: uniform_buffer_bind_group,
+		};
+		let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: None,
+			contents: bytemuck::cast_slice(&[Uniforms::default()]),
+			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+		});
 		let uniform_buffer_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: None,
 			layout: &uniforms_bind_group_layout,
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: uniform_buffer.as_entire_binding(),
-				}
-			],
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: uniform_buffer.as_entire_binding(),
+			}],
 		});
-		let square_uniforms = UniformBuffers {buffer: uniform_buffer, bg: uniform_buffer_bind_group};
+		let square_uniforms = UniformBuffers {
+			buffer: uniform_buffer,
+			bg: uniform_buffer_bind_group,
+		};
 
 		// Creating the pipeline
 		let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
@@ -209,8 +222,8 @@ impl State {
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: None,
-				buffers: &[ Some(Vertex::desc()) ],
-				compilation_options: wgpu::PipelineCompilationOptions::default()
+				buffers: &[Some(Vertex::desc())],
+				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
@@ -219,8 +232,8 @@ impl State {
 				targets: &[Some(wgpu::ColorTargetState {
 					format: config.format,
 					blend: Some(wgpu::BlendState::REPLACE),
-					write_mask: wgpu::ColorWrites::ALL
-				})]
+					write_mask: wgpu::ColorWrites::ALL,
+				})],
 			}),
 			primitive: wgpu::PrimitiveState {
 				topology: wgpu::PrimitiveTopology::TriangleList,
@@ -229,17 +242,17 @@ impl State {
 				cull_mode: None,
 				polygon_mode: wgpu::PolygonMode::Fill,
 				unclipped_depth: false,
-				conservative: false
+				conservative: false,
 			},
 			depth_stencil: None,
 			multisample: wgpu::MultisampleState::default(),
 			multiview_mask: None,
-			cache: None
+			cache: None,
 		});
 
 		// World
 		// let world = World::generate_from_times(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]);
-		let world = World::generate_from_floats_file(midi_path);
+		let world = World::generate_from_file(Square::new(args.square_speed), args.seed, &args.midi_path);
 
 		// Creating the buffer
 		let world_mesh = world.create_mesh();
@@ -264,13 +277,26 @@ impl State {
 		let mut audio_stream = rodio::DeviceSinkBuilder::open_default_sink().expect("Failed to get audio handle, make sure you have headphones or speakers");
 		audio_stream.log_on_drop(false);
 
+		// Configure
+		surface.configure(&device, &config);
+
 		// finally create the thing
 		Self {
-			window, surface, device, queue, config, is_surface_configured: false, render_pipeline,
-			map_buffer, square_buffer, map_uniforms, square_uniforms,
-			world, last_time: Instant::now(),
-			sink: rodio::Player::connect_new(&audio_stream.mixer()), _audio_stream: audio_stream,
-			midi_path: midi_path.to_string(), audio_path: audio_path.to_string()
+			window,
+			surface,
+			device,
+			queue,
+			config,
+			render_pipeline,
+			map_buffer,
+			square_buffer,
+			map_uniforms,
+			square_uniforms,
+			world,
+			last_time: Instant::now(),
+			sink: rodio::Player::connect_new(&audio_stream.mixer()),
+			_audio_stream: audio_stream,
+			args,
 		}
 	}
 	pub fn resize(&mut self, width: u32, height: u32) {
@@ -278,14 +304,15 @@ impl State {
 			self.config.width = width;
 			self.config.height = height;
 			self.surface.configure(&self.device, &self.config);
-			self.is_surface_configured = true;
 		}
 	}
 	pub fn keypress(&mut self, key: char) {
 		match key {
-			'r' => {self.world.reset(); self.sink.stop();}, // resets the square
-			'g' => {self.world = World::generate_from_floats_file(&self.midi_path); self.map_buffer = self.world.create_mesh().create_buffers(&self.device); self.sink.stop();}, // regenerates the world
-			_ => ()
+			'r' => {
+				self.world.reset();
+				self.sink.stop();
+			} // resets the square
+			_ => (),
 		}
 	}
 	pub fn render(&mut self) {
@@ -299,7 +326,7 @@ impl State {
 
 		// start
 		if !self.world.started && self.world.camera.distance_squared(self.world.square.pos) < 1.0 {
-			let source = rodio::Decoder::try_from(File::open(&self.audio_path).unwrap()).unwrap();
+			let source = rodio::Decoder::try_from(File::open(&self.args.audio_path).unwrap()).unwrap();
 			self.sink.append(source);
 			self.world.started = true;
 		}
@@ -309,39 +336,52 @@ impl State {
 		let aspect = self.config.height as f32 / self.config.width as f32;
 
 		let map_uniform = Uniforms {
-				matrix: [
-								aspect * SCALE_FACTOR         ,                0.0                  ,
-										0.0                   ,            SCALE_FACTOR             ,
-					-self.world.camera.x * aspect * SCALE_FACTOR , -self.world.camera.y * SCALE_FACTOR ,
-					0.0, 0.0 // I hate padding
-				],
-				color: [1.0, 1.0, 1.0, 1.0],
-			};
+			matrix: [
+				aspect * SCALE_FACTOR,
+				0.0,
+				0.0,
+				SCALE_FACTOR,
+				-self.world.camera.x * aspect * SCALE_FACTOR,
+				-self.world.camera.y * SCALE_FACTOR,
+				0.0,
+				0.0, // I hate padding
+			],
+			color: [1.0, 1.0, 1.0, 1.0],
+		};
 
-			self.queue.write_buffer(&self.map_uniforms.buffer, 0, bytemuck::cast_slice(&[map_uniform]));
+		self.queue.write_buffer(&self.map_uniforms.buffer, 0, bytemuck::cast_slice(&[map_uniform]));
 
 		const COLORS: [[f32; 4]; 4] = [[1.0, 0.0, 0.0, 1.0], [1.0, 1.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]]; // I hate padding (pretend the padding is alpha)
 		let square_uniform = Uniforms {
-				matrix: [
-								aspect * SCALE_FACTOR * self.world.square.squish.x         ,                0.0                  ,
-										0.0                   ,            SCALE_FACTOR * self.world.square.squish.y             ,
-					(self.world.square.pos.x-self.world.camera.x) * aspect * SCALE_FACTOR , (self.world.square.pos.y-self.world.camera.y) * SCALE_FACTOR ,
-					0.0, 0.0 // I hate padding
-				],
-				color: COLORS[self.world.square.next_note % 4],
-			};
+			matrix: [
+				aspect * SCALE_FACTOR * self.world.square.squish.x,
+				0.0,
+				0.0,
+				SCALE_FACTOR * self.world.square.squish.y,
+				(self.world.square.pos.x - self.world.camera.x) * aspect * SCALE_FACTOR,
+				(self.world.square.pos.y - self.world.camera.y) * SCALE_FACTOR,
+				0.0,
+				0.0, // I hate padding
+			],
+			color: COLORS[self.world.square.next_note % 4],
+		};
 
-			self.queue.write_buffer(&self.square_uniforms.buffer, 0, bytemuck::cast_slice(&[square_uniform]));
+		self.queue.write_buffer(&self.square_uniforms.buffer, 0, bytemuck::cast_slice(&[square_uniform]));
 
 		//////////////////////// Render //////////////////////////////////
-		if !self.is_surface_configured {return}
 
 		// they made this way more complicated than it used to be
 		let output = match self.surface.get_current_texture() {
 			wgpu::CurrentSurfaceTexture::Success(texture) => texture,
-			wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => { self.surface.configure(&self.device, &self.config); surface_texture },
-			wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Validation | wgpu::CurrentSurfaceTexture::Lost => { return },
-			wgpu::CurrentSurfaceTexture::Outdated => { self.surface.configure(&self.device, &self.config); return },
+			wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => {
+				self.surface.configure(&self.device, &self.config);
+				surface_texture
+			}
+			wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Validation | wgpu::CurrentSurfaceTexture::Lost => return,
+			wgpu::CurrentSurfaceTexture::Outdated => {
+				self.surface.configure(&self.device, &self.config);
+				return;
+			}
 		};
 
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -355,11 +395,9 @@ impl State {
 					resolve_target: None,
 					depth_slice: None,
 					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color {
-							r: 0.25, g: 0.25, b: 0.25, a: 1.0,
-						}),
-						store: wgpu::StoreOp::Store
-					}
+						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.25, g: 0.25, b: 0.25, a: 1.0 }),
+						store: wgpu::StoreOp::Store,
+					},
 				})],
 				..Default::default()
 			});

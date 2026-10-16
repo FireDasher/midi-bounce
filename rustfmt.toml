@@ -1,0 +1,4 @@
+hard_tabs = true
+newline_style = "Unix"
+match_arm_blocks = false
+max_width = 200
